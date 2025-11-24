@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Overlay Editor</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+            background: #f0f0f0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            transition: background 0.3s;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        #downloadBtn {
+            background: #2196F3;
+        }
+        #downloadBtn:hover {
+            background: #0b7dda;
+        }
+        #downloadBtn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        #canvasContainer {
+            position: relative;
+            display: inline-block;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        canvas {
+            display: block;
+            background: white;
+        }
+        .overlay-controls {
+            position: absolute;
+            border: 2px solid #2196F3;
+            pointer-events: none;
+            display: none;
+        }
+        .overlay-controls.active {
+            display: block;
+        }
+        .resize-handle {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background: #2196F3;
+            border: 2px solid white;
+            border-radius: 50%;
+            pointer-events: all;
+            cursor: pointer;
+        }
+        .resize-handle.nw { top: -5px; left: -5px; cursor: nw-resize; }
+        .resize-handle.ne { top: -5px; right: -5px; cursor: ne-resize; }
+        .resize-handle.sw { bottom: -5px; left: -5px; cursor: sw-resize; }
+        .resize-handle.se { bottom: -5px; right: -5px; cursor: se-resize; }
+        #fileInput {
+            display: none;
+        }
+        .adjustment-panel {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: none;
+        }
+        .adjustment-panel.active {
+            display: block;
+        }
+        .slider-group {
+            margin-bottom: 15px;
+        }
+        .slider-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #333;
+        }
+        .slider-group input[type="range"] {
+            width: 300px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="controls">
+        <input type="file" id="fileInput" accept="image/*">
+        <button onclick="document.getElementById('fileInput').click()">Upload Image</button>
+        <button id="downloadBtn" disabled onclick="downloadImage()">Download Result</button>
+    </div>
+    <div id="adjustmentPanel" class="adjustment-panel">
+        <div class="slider-group">
+            <label for="brightness">Brightness: <span id="brightnessValue">0</span></label>
+            <input type="range" id="brightness" min="-100" max="100" value="0" step="1">
+        </div>
+        <div class="slider-group">
+            <label for="contrast">Contrast: <span id="contrastValue">0</span></label>
+            <input type="range" id="contrast" min="-100" max="100" value="0" step="1">
+        </div>
+        <div class="slider-group">
+            <label for="exposure">Exposure: <span id="exposureValue">0</span></label>
+            <input type="range" id="exposure" min="-100" max="100" value="0" step="1">
+        </div>
+    </div>
+    <div id="canvasContainer">
+        <canvas id="canvas"></canvas>
+        <div id="overlayControls" class="overlay-controls">
+            <div class="resize-handle nw" data-corner="nw"></div>
+            <div class="resize-handle ne" data-corner="ne"></div>
+            <div class="resize-handle sw" data-corner="sw"></div>
+            <div class="resize-handle se" data-corner="se"></div>
+        </div>
+    </div>
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const overlayControls = document.getElementById('overlayControls');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const fileInput = document.getElementById('fileInput');
+        let baseImage = null;
+        let overlayImage = null;
+        let overlayData = {
+            x: 50,
+            y: 50,
+            width: 200,
+            height: 200,
+            isDragging: false,
+            isResizing: false,
+            resizeCorner: null,
+            dragStartX: 0,
+            dragStartY: 0,
+            brightness: 0,
+            contrast: 0,
+            exposure: 0
+        };
+
+        // Load base image
+        const baseImg = new Image();
+        baseImg.crossOrigin = "anonymous";
+        baseImg.src = 'https://file.garden/Z43SqDt67TpUFO8v/artworks-KzAmXBa3SdcpZSzj-bSjkgA-t500x500(1).jpg';
+        baseImg.onload = function() {
+            baseImage = baseImg;
+            canvas.width = baseImg.width;
+            canvas.height = baseImg.height;
+            render();
+        };
+
+        // Handle file upload
+        fileInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    const img = new Image();
+                    img.onload = function() {
+                        overlayImage = img;
+                        // Center overlay and set initial size
+                        overlayData.width = Math.min(img.width, canvas.width / 2);
+                        overlayData.height = overlayData.width * (img.height / img.width);
+                        overlayData.x = (canvas.width - overlayData.width) / 2;
+                        overlayData.y = (canvas.height - overlayData.height) / 2;
+                        render();
+                        downloadBtn.disabled = false;
+                        document.getElementById('adjustmentPanel').classList.add('active');
+                    };
+                    img.src = event.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        function render() {
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+                        
+            // Draw base image
+            if (baseImage) {
+                ctx.drawImage(baseImage, 0, 0);
+            }
+                        
+            // Draw overlay image
+            if (overlayImage) {
+                // Apply filters for screen rendering
+                ctx.save();
+                ctx.filter = `brightness(${100 + overlayData.brightness}%) contrast(${100 + overlayData.contrast}%) brightness(${100 + overlayData.exposure * 0.5}%)`;
+                ctx.drawImage(overlayImage, overlayData.x, overlayData.y, overlayData.width, overlayData.height);
+                ctx.restore();
+                updateOverlayControls();
+            }
+        }
+
+        function updateOverlayControls() {
+            if (overlayImage) {
+                overlayControls.classList.add('active');
+                overlayControls.style.left = overlayData.x + 'px';
+                overlayControls.style.top = overlayData.y + 'px';
+                overlayControls.style.width = overlayData.width + 'px';
+                overlayControls.style.height = overlayData.height + 'px';
+            } else {
+                overlayControls.classList.remove('active');
+            }
+        }
+
+        // Mouse events for dragging
+        canvas.addEventListener('mousedown', function(e) {
+            if (!overlayImage) return;
+                        
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+                        
+            if (x >= overlayData.x && x <= overlayData.x + overlayData.width &&
+                y >= overlayData.y && y <= overlayData.y + overlayData.height) {
+                overlayData.isDragging = true;
+                overlayData.dragStartX = x - overlayData.x;
+                overlayData.dragStartY = y - overlayData.y;
+            }
+        });
+
+        canvas.addEventListener('mousemove', function(e) {
+            if (!overlayData.isDragging) return;
+                        
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+                        
+            overlayData.x = x - overlayData.dragStartX;
+            overlayData.y = y - overlayData.dragStartY;
+                        
+            render();
+        });
+
+        canvas.addEventListener('mouseup', function() {
+            overlayData.isDragging = false;
+            overlayData.isResizing = false;
+        });
+
+        canvas.addEventListener('mouseleave', function() {
+            overlayData.isDragging = false;
+            overlayData.isResizing = false;
+        });
+
+        // Resize handle events
+        document.querySelectorAll('.resize-handle').forEach(handle => {
+            handle.addEventListener('mousedown', function(e) {
+                e.stopPropagation();
+                overlayData.isResizing = true;
+                overlayData.resizeCorner = this.dataset.corner;
+                overlayData.dragStartX = e.clientX;
+                overlayData.dragStartY = e.clientY;
+                overlayData.startWidth = overlayData.width;
+                overlayData.startHeight = overlayData.height;
+                overlayData.startX = overlayData.x;
+                overlayData.startY = overlayData.y;
+            });
+        });
+
+        document.addEventListener('mousemove', function(e) {
+            if (!overlayData.isResizing) return;
+                        
+            const dx = e.clientX - overlayData.dragStartX;
+            const dy = e.clientY - overlayData.dragStartY;
+            const aspectRatio = overlayImage.width / overlayImage.height;
+                        
+            switch(overlayData.resizeCorner) {
+                case 'se':
+                    overlayData.width = Math.max(10, overlayData.startWidth + dx);
+                    overlayData.height = overlayData.width / aspectRatio;
+                    break;
+                case 'sw':
+                    overlayData.width = Math.max(10, overlayData.startWidth - dx);
+                    overlayData.height = overlayData.width / aspectRatio;
+                    overlayData.x = overlayData.startX + (overlayData.startWidth - overlayData.width);
+                    break;
+                case 'ne':
+                    overlayData.width = Math.max(10, overlayData.startWidth + dx);
+                    overlayData.height = overlayData.width / aspectRatio;
+                    overlayData.y = overlayData.startY + (overlayData.startHeight - overlayData.height);
+                    break;
+                case 'nw':
+                    overlayData.width = Math.max(10, overlayData.startWidth - dx);
+                    overlayData.height = overlayData.width / aspectRatio;
+                    overlayData.x = overlayData.startX + (overlayData.startWidth - overlayData.width);
+                    overlayData.y = overlayData.startY + (overlayData.startHeight - overlayData.height);
+                    break;
+            }
+                        
+            render();
+        });
+
+        document.addEventListener('mouseup', function() {
+            overlayData.isResizing = false;
+        });
+        
+        // **FIXED FUNCTION:** This function now applies the filters to the overlay image before downloading.
+        function downloadImage() {
+            if (!overlayImage) return;
+
+            // 1. Create Temporary Canvas for the Final Output
+            const finalCanvas = document.createElement('canvas');
+            finalCanvas.width = canvas.width;
+            finalCanvas.height = canvas.height;
+            const finalCtx = finalCanvas.getContext('2d');
+
+            // Draw base image (unfiltered)
+            if (baseImage) {
+                finalCtx.drawImage(baseImage, 0, 0, finalCanvas.width, finalCanvas.height);
+            }
+
+            // 2. Create a second temporary canvas to draw the filtered overlay
+            const filteredOverlayCanvas = document.createElement('canvas');
+            filteredOverlayCanvas.width = overlayData.width;
+            filteredOverlayCanvas.height = overlayData.height;
+            const filteredOverlayCtx = filteredOverlayCanvas.getContext('2d');
+
+            // Apply filters to the drawing context of the overlay canvas
+            // This forces the filters to be applied to the pixels when overlayImage is drawn
+            filteredOverlayCtx.filter = `
+                brightness(${100 + overlayData.brightness}%) 
+                contrast(${100 + overlayData.contrast}%) 
+                brightness(${100 + overlayData.exposure * 0.5}%)
+            `;
+
+            // Draw the original overlay image onto this filtered canvas
+            filteredOverlayCtx.drawImage(overlayImage, 0, 0, overlayData.width, overlayData.height);
+
+            // 3. Draw the newly filtered overlay canvas onto the final canvas
+            finalCtx.drawImage(
+                filteredOverlayCanvas, 
+                overlayData.x, 
+                overlayData.y, 
+                overlayData.width, 
+                overlayData.height
+            );
+
+            // 4. Download Final Image
+            finalCanvas.toBlob(function(blob) {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'overlay-result.png';
+                a.click();
+                URL.revokeObjectURL(url);
+            });
+        }
+        // END OF FIXED FUNCTION
+
+        // Adjustment sliders
+        const brightnessSlider = document.getElementById('brightness');
+        const contrastSlider = document.getElementById('contrast');
+        const exposureSlider = document.getElementById('exposure');
+        const brightnessValue = document.getElementById('brightnessValue');
+        const contrastValue = document.getElementById('contrastValue');
+        const exposureValue = document.getElementById('exposureValue');
+
+        brightnessSlider.addEventListener('input', function() {
+            overlayData.brightness = parseInt(this.value);
+            brightnessValue.textContent = this.value;
+            render();
+        });
+
+        contrastSlider.addEventListener('input', function() {
+            overlayData.contrast = parseInt(this.value);
+            contrastValue.textContent = this.value;
+            render();
+        });
+
+        exposureSlider.addEventListener('input', function() {
+            overlayData.exposure = parseInt(this.value);
+            exposureValue.textContent = this.value;
+            render();
+        });
+    </script>
+</body>
+</html>
