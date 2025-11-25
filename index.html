@@ -154,7 +154,6 @@
             exposure: 0
         };
 
-        // Load base image
         const baseImg = new Image();
         baseImg.crossOrigin = "anonymous";
         baseImg.src = 'https://file.garden/Z43SqDt67TpUFO8v/artworks-KzAmXBa3SdcpZSzj-bSjkgA-t500x500(1).jpg';
@@ -165,7 +164,6 @@
             render();
         };
 
-        // Handle file upload
         fileInput.addEventListener('change', function(e) {
             const file = e.target.files[0];
             if (file) {
@@ -174,7 +172,6 @@
                     const img = new Image();
                     img.onload = function() {
                         overlayImage = img;
-                        // Center overlay and set initial size
                         overlayData.width = Math.min(img.width, canvas.width / 2);
                         overlayData.height = overlayData.width * (img.height / img.width);
                         overlayData.x = (canvas.width - overlayData.width) / 2;
@@ -190,17 +187,13 @@
         });
 
         function render() {
-            // Clear canvas
             ctx.clearRect(0, 0, canvas.width, canvas.height);
                         
-            // Draw base image
             if (baseImage) {
                 ctx.drawImage(baseImage, 0, 0);
             }
                         
-            // Draw overlay image
             if (overlayImage) {
-                // Apply filters for screen rendering
                 ctx.save();
                 ctx.filter = `brightness(${100 + overlayData.brightness}%) contrast(${100 + overlayData.contrast}%) brightness(${100 + overlayData.exposure * 0.5}%)`;
                 ctx.drawImage(overlayImage, overlayData.x, overlayData.y, overlayData.width, overlayData.height);
@@ -221,7 +214,6 @@
             }
         }
 
-        // Mouse events for dragging
         canvas.addEventListener('mousedown', function(e) {
             if (!overlayImage) return;
                         
@@ -260,7 +252,6 @@
             overlayData.isResizing = false;
         });
 
-        // Resize handle events
         document.querySelectorAll('.resize-handle').forEach(handle => {
             handle.addEventListener('mousedown', function(e) {
                 e.stopPropagation();
@@ -312,39 +303,31 @@
             overlayData.isResizing = false;
         });
         
-        // **FIXED FUNCTION:** This function now applies the filters to the overlay image before downloading.
         function downloadImage() {
             if (!overlayImage) return;
 
-            // 1. Create Temporary Canvas for the Final Output
             const finalCanvas = document.createElement('canvas');
             finalCanvas.width = canvas.width;
             finalCanvas.height = canvas.height;
             const finalCtx = finalCanvas.getContext('2d');
 
-            // Draw base image (unfiltered)
             if (baseImage) {
                 finalCtx.drawImage(baseImage, 0, 0, finalCanvas.width, finalCanvas.height);
             }
 
-            // 2. Create a second temporary canvas to draw the filtered overlay
             const filteredOverlayCanvas = document.createElement('canvas');
             filteredOverlayCanvas.width = overlayData.width;
             filteredOverlayCanvas.height = overlayData.height;
             const filteredOverlayCtx = filteredOverlayCanvas.getContext('2d');
 
-            // Apply filters to the drawing context of the overlay canvas
-            // This forces the filters to be applied to the pixels when overlayImage is drawn
             filteredOverlayCtx.filter = `
                 brightness(${100 + overlayData.brightness}%) 
                 contrast(${100 + overlayData.contrast}%) 
                 brightness(${100 + overlayData.exposure * 0.5}%)
             `;
 
-            // Draw the original overlay image onto this filtered canvas
             filteredOverlayCtx.drawImage(overlayImage, 0, 0, overlayData.width, overlayData.height);
 
-            // 3. Draw the newly filtered overlay canvas onto the final canvas
             finalCtx.drawImage(
                 filteredOverlayCanvas, 
                 overlayData.x, 
@@ -353,7 +336,6 @@
                 overlayData.height
             );
 
-            // 4. Download Final Image
             finalCanvas.toBlob(function(blob) {
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
@@ -363,7 +345,6 @@
                 URL.revokeObjectURL(url);
             });
         }
-        // END OF FIXED FUNCTION
 
         // Adjustment sliders
         const brightnessSlider = document.getElementById('brightness');
@@ -393,4 +374,5 @@
     </script>
 </body>
 </html>
+
 
